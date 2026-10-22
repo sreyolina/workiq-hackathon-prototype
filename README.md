@@ -170,6 +170,53 @@ details are in [`simulator/README.md`](simulator/README.md) — start there.
 
 ---
 
+## Governance demo — HR-sensitive data not visible to `quality_pm`
+
+The simulator ships a built-in multi-signal RBAC demo using **scenario `c1-northbridge`**.
+
+### Ask as `quality_pm` (Maria Delgado — Quality Program Manager)
+
+```powershell
+$env:WORKIQ_SIM_PERSONA = "quality_pm"
+$env:WORKIQ_SIM_SCENARIO = "scenarios/c1-northbridge"
+.\.venv\Scripts\python.exe simulator\demo.py --ask "Prep me for the Joint Commission readiness review: what did the quality committee decide on med-reconciliation, who owns the corrective action, did credentialing close the related onboarding gap, and what's outstanding?"
+```
+
+**What you see:** A full multi-signal answer drawing from committee meetings (MTG-001, MTG-003), email (EML-006), the readiness checklist (FILE-004), and open CAPAs — **plus** a governance note:
+
+```
+[Governance] 1 source was withheld from this answer because the active persona
+('quality_pm') does not have access to restricted material: FILE-003.
+Switch to a leadership persona to see it.
+```
+
+`FILE-003` is `Credentialing — Provider Onboarding Personnel Matter (CONFIDENTIAL).docx`. Maria's ACL does not include the HR credentialing file — it is silently excluded from citations and answer prose.
+
+### Same question as `ops_director` (James Whitaker — Director of Clinic Operations)
+
+```powershell
+$env:WORKIQ_SIM_PERSONA = "ops_director"
+.\.venv\Scripts\python.exe simulator\demo.py --ask "Prep me for the Joint Commission readiness review: what did the quality committee decide on med-reconciliation, who owns the corrective action, did credentialing close the related onboarding gap, and what's outstanding?"
+```
+
+**What you see:** Identical answer structure — FILE-003 now appears in citations, the HR personnel matter detail is included in the narrative, and the governance note is absent.
+
+### What the demo proves
+
+| Signal | `quality_pm` | `ops_director` |
+|--------|-------------|----------------|
+| Committee decisions (MTG-001, MTG-003) | ✅ Visible | ✅ Visible |
+| Open CAPAs (CAPA-001, CAPA-002) | ✅ Visible | ✅ Visible |
+| Readiness checklist (FILE-004) | ✅ Visible | ✅ Visible |
+| **HR personnel file (FILE-003)** | **❌ Withheld + audit note** | **✅ Visible** |
+| CAPA-005 closed-session detail | ❌ Withheld | ✅ Visible |
+
+The system **never denies the question** — it answers as much as the identity allows, explicitly audits what was trimmed, and returns the same answer shape for both personas. Only the *data* changes.
+
+> Full live demo script with persona-switch steps: **Case 2b** in [`docs/NORTHBRIDGE_DEMO_RUNBOOK.md`](docs/NORTHBRIDGE_DEMO_RUNBOOK.md).
+
+---
+
 ## Quick start — Path B (real Work IQ)
 
 Request the **Participant Setup Guide** from the hackathon organizers (it is not included
@@ -262,6 +309,92 @@ What activities am I doing for the AGCO project today?
 ```
 
 Run `/mcp` inside Copilot CLI any time to confirm the `workiq` server is connected. 🎉
+
+---
+
+## Running the Agent (Azure AI Foundry + Simulator)
+
+### 1. Login to the correct tenant (one-time)
+
+```powershell
+az login --tenant 91250b22-e679-44bb-b688-b585aeae176e
+az account set --subscription e15576d7-67e8-4ed2-acab-42c5885ea1fd
+```
+
+### 2. Set environment variables (every new terminal session)
+
+```powershell
+$env:AZURE_OPENAI_ENDPOINT = "https://ssomo-mqtn76io-eastus2.cognitiveservices.azure.com/openai/v1"
+$env:AZURE_AI_FOUNDRY_DEPLOYMENT = "gpt-4o-mini"
+$env:AZURE_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
+$env:WORKIQ_SIM_PERSONA = "quality_pm"
+```
+
+### 2a. Optional: Enable telemetry + Application Insights
+
+The agent and web app now emit OpenTelemetry metrics and spans through
+`agent/telemetry.py`. If you provide an Application Insights connection string,
+telemetry is exported to Azure Monitor.
+
+Install the optional exporter dependency:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install azure-monitor-opentelemetry
+```
+
+Set telemetry environment variables in the same terminal before starting the
+agent or web app:
+
+```powershell
+$env:APPLICATIONINSIGHTS_CONNECTION_STRING = "InstrumentationKey=<key>;IngestionEndpoint=https://<region>.in.applicationinsights.azure.com/"
+$env:AZURE_EXPERIMENTAL_ENABLE_GENAI_TRACING = "true"
+```
+
+What is emitted:
+
+* Metrics
+  * `workiq_requests_total`
+  * `workiq_request_failures_total`
+  * `workiq_request_latency_ms`
+  * `workiq_prompt_tokens_total`
+  * `workiq_completion_tokens_total`
+  * `workiq_total_tokens_total`
+* Spans
+  * `workiq.agent.turn` from `agent/workiq_agent.py`
+  * `workiq.web.ask` from `agent/web.py`
+* Span attributes include scenario, persona, deployment, request size, and token usage.
+
+If `APPLICATIONINSIGHTS_CONNECTION_STRING` is not set, the app still runs and
+telemetry stays local (no export).
+
+### 3. Start A2A simulator (in a separate terminal)
+
+```powershell
+cd c:\Users\somolinasaha\workiq\workiq-hackathon-prototype
+.\.venv\Scripts\python.exe simulator\a2a_server.py
+```
+
+### 4. Run the agent (in another terminal)
+
+```powershell
+cd c:\Users\somolinasaha\workiq\workiq-hackathon-prototype
+$env:AZURE_OPENAI_ENDPOINT = "https://ssomo-mqtn76io-eastus2.cognitiveservices.azure.com/openai/v1"
+$env:AZURE_AI_FOUNDRY_DEPLOYMENT = "gpt-4o-mini"
+$env:AZURE_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
+$env:WORKIQ_SIM_PERSONA = "quality_pm"
+.\.venv\Scripts\python.exe agent\workiq_agent.py --ask "What is blocking PPAP qualification?"
+```
+
+### 5. Run the web agent (interactive UI)
+
+```powershell
+cd c:\Users\somolinasaha\workiq\workiq-hackathon-prototype
+$env:AZURE_OPENAI_ENDPOINT = "https://ssomo-mqtn76io-eastus2.cognitiveservices.azure.com/openai/v1"
+$env:AZURE_AI_FOUNDRY_DEPLOYMENT = "gpt-4o-mini"
+$env:AZURE_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
+$env:WORKIQ_SIM_PERSONA = "quality_pm"
+.\.venv\Scripts\python.exe agent\web.py
+```
 
 ---
 

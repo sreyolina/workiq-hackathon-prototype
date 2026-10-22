@@ -5,9 +5,9 @@
       "action": "Finalise and publish the revised medication-reconciliation policy",
       "committee": "quality_steering",
       "owner": "PPL-005",
-      "status": "Flagged",
+      "status": "Open",
       "opened_date": "2026-05-27",
-      "due_date": "2026-06-09",
+      "due_date": "2026-09-05",
       "past_due": false,
       "acl": [
         "ops_director",
@@ -37,7 +37,7 @@
       "owner": "PPL-010",
       "status": "Open",
       "opened_date": "2026-06-01",
-      "due_date": "2026-06-13",
+      "due_date": "2026-09-01",
       "past_due": false,
       "acl": [
         "ops_director",
@@ -52,7 +52,7 @@
       "owner": "PPL-007",
       "status": "Flagged",
       "opened_date": "2026-05-27",
-      "due_date": "2026-06-06",
+      "due_date": "2026-08-30",
       "past_due": false,
       "acl": [
         "ops_director",
@@ -75,29 +75,11 @@
       ]
     },
     {
-      "action": "Conduct post-go-live EHR user satisfaction survey at Westgate",
-      "committee": "ehr_program",
-      "owner": "PPL-004",
+      "id": "NEW",
+      "action": "PharmaLink supply-chain compliance audit",
+      "owner": "Karen Liu (PPL-011)",
+      "due_date": "2026-09-30",
       "status": "Open",
-      "opened_date": "2026-06-28",
-      "due_date": "2026-07-15",
-      "past_due": false,
-      "id": "CAPA-006",
-      "acl": [
-        "ops_director",
-        "quality_pm",
-        "credentialing_lead"
-      ]
-    },
-    {
-      "action": "Conduct post-go-live EHR user satisfaction survey at Westgate",
-      "committee": "ehr_program",
-      "owner": "PPL-004",
-      "status": "Open",
-      "opened_date": "2026-06-28",
-      "due_date": "2026-07-15",
-      "past_due": false,
-      "id": "CAPA-007",
       "acl": [
         "ops_director",
         "quality_pm",
