@@ -55,6 +55,7 @@ from workiq_agent import (  # noqa: E402
     DEPLOYMENT,
     orchestrate,
 )
+from report_requests import is_download_followup, localize_source_links, report_type_for
 import httpx  # noqa: E402
 from telemetry import (
     setup_telemetry,
@@ -294,6 +295,7 @@ async def lifespan(app: FastAPI):
     app.state.http = httpx.AsyncClient(timeout=180.0)
     # session_key -> stable context_id so each chat has its own thread on the sub-agents.
     app.state.contexts = {}
+    app.state.report_requests = {}
     # session_key -> cumulative total tokens used in this process.
     app.state.session_token_usage = {}
     # session_key -> next unix timestamp when a request is allowed.
@@ -492,6 +494,10 @@ async def ask(req: AskRequest, request: Request):
     answer_text = ""
     tool_trail: list[dict] = []
     turn_started_at = datetime.now(timezone.utc).isoformat()
+    report_question = request.app.state.report_requests.get(session_key)
+    routed_question = q
+    if report_type_for(q) is None and report_question and is_download_followup(q):
+        routed_question = report_question
 
     try:
         with telemetry.tracer.start_as_current_span(
@@ -507,7 +513,7 @@ async def ask(req: AskRequest, request: Request):
         ) as span:
             result = await orchestrate(
                 request.app.state.http,
-                q,
+                routed_question,
                 telemetry,
                 persona=persona,
                 context_id=context_id,
@@ -545,6 +551,10 @@ async def ask(req: AskRequest, request: Request):
             ),
         )
 
+    if report_type_for(routed_question) and "/download/report/" in answer_text:
+        request.app.state.report_requests[session_key] = routed_question
+    answer_text = localize_source_links(answer_text, _scenario.index)
+
     # Convert bare citation IDs into links for the UI.
     import re
 
@@ -557,7 +567,7 @@ async def ask(req: AskRequest, request: Request):
         return cid
 
     answer_text = re.sub(
-        r"(?<![/\[] )\b(MTG|EML|MSG|FILE|PPL|CAPA|AI)-\d{3}\b(?!\])".replace(" ", ""),
+        r"(?<![/\[])\b(MTG|EML|MSG|FILE|PPL|VND|PROP|CAPA|AI)-\d{3,}\b(?!\])",
         _linkify_citation,
         answer_text,
     )
@@ -2280,6 +2290,10 @@ async def citation_detail(kind: str, cid: str, request: Request) -> str:
     if auth is not None:
         return auth
     record = _scenario.index.get(cid)
+    if record is None:
+        # Re-load from disk — picks up records created by the reconciliation agent after startup
+        fresh = load_scenario(REPO_ROOT / "simulator" / SCENARIO)
+        record = fresh.index.get(cid)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Citation {cid} not found")
     _kind, data = record

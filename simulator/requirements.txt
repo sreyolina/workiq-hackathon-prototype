@@ -12,3 +12,4 @@ openai>=1.0         # OPTIONAL: ad-hoc LLM fallback for non-golden questions
 numpy>=1.24         # Embedding vector operations (cosine similarity, caching)
 httpx>=0.27         # HTTP client for Azure AI Search + embedding API calls
 azure-identity>=1.15  # Azure authentication (AzureCliCredential for token-based auth)
+openpyxl>=3.1         # Excel report generation (generate_weekly_vendor_report, generate_jc_readiness_report)

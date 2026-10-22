@@ -67,6 +67,15 @@ In **terminal B** — run the agent:
 
 ## Notes / troubleshooting
 
+- **Excel reports in the web UI** — request a weekly vendor status report or a
+  Joint Commission readiness report. These requests invoke the MCP report tool
+  directly and return a `/download/report/...xlsx` link only after generation
+  succeeds. Report download follow-ups reuse the last successful report request
+  within the same persona/chat while the web server remains running.
+- **Simulator source links** — scenario SharePoint URLs are synthetic, not real
+  hosted files. Known fixture URLs open a local citation preview in the web UI;
+  generated reports use the separate Excel download endpoint.
+
 - **Auth fails** — make sure `az login` was successful and your account has
   Cognitive Services User on the Foundry resource.
 - **A2AAgent / OpenAIChatClient import errors** — the exact import path

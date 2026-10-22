@@ -43,6 +43,7 @@ from opentelemetry import trace  # noqa: E402
 
 from _foundry import build_chat_client  # noqa: E402
 from a2a_serve import serve_forever  # noqa: E402
+from report_requests import parse_report_tool_result, report_type_for  # noqa: E402
 from telemetry import extract_usage, record_usage, setup_telemetry, span_context_attributes  # noqa: E402
 
 
@@ -313,7 +314,9 @@ def _split_answer_and_citations(text: str) -> tuple[str, list]:
     return answer, citations
 
 
-def _build_mcp_tool(persona: str | None = None) -> MCPStdioTool:
+def _build_mcp_tool(
+    persona: str | None = None, *, report_only: bool = False,
+) -> MCPStdioTool:
     if not PYTHON_CMD.exists():
         raise RuntimeError(f"Python interpreter not found at {PYTHON_CMD}")
     if not MCP_SCRIPT.exists():
@@ -330,6 +333,7 @@ def _build_mcp_tool(persona: str | None = None) -> MCPStdioTool:
             **os.environ,
             "WORKIQ_SIM_PERSONA": persona or PERSONA,
             "WORKIQ_SIM_SCENARIO": SCENARIO,
+            **({"WORKIQ_SEARCH_DISABLED": "true"} if report_only else {}),
         },
     )
 
@@ -365,10 +369,37 @@ async def _setup():
             )
         else:
             prompt = question
-        mcp_tool = _build_mcp_tool(persona)
+        original_question = question.rsplit("\n\nuser:", 1)[-1].strip()
+        report_type = report_type_for(original_question)
+        mcp_tool = _build_mcp_tool(persona, report_only=report_type is not None)
         simulator_a2a = _build_simulator_a2a(persona)
         try:
             async with mcp_tool:
+                if report_type:
+                    result = await mcp_tool.call_tool("generate_report", report_type=report_type)
+                    texts = [result] if isinstance(result, str) else [
+                        part.text for part in result if part.text
+                    ]
+                    report = parse_report_tool_result(texts)
+                    if report.get("status") != "success":
+                        raise RuntimeError(
+                            "Report generation failed: "
+                            + str(report.get("message") or report.get("error") or report)
+                        )
+                    filename = report["filename"]
+                    download_url = report["download_url"]
+                    if not download_url.startswith("/download/report/"):
+                        raise RuntimeError("Report tool returned an invalid download URL.")
+                    return {
+                        "response": (
+                            f"Your Excel report is ready.\n\n"
+                            f"[Download {filename}]({download_url})\n\n"
+                            + str(report.get("note") or "")
+                        ),
+                        "citations": [],
+                        "metadata": {"stage": "planner", "subagent": "planner",
+                                     "report_type": report_type},
+                    }
                 agent = ChatAgent(
                     client,
                     instructions=INSTRUCTIONS,

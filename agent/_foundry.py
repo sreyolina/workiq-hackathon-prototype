@@ -1,8 +1,9 @@
 r"""Shared Azure AI Foundry chat-client factory.
 
 Every Work IQ sub-agent (and the orchestrator) uses this to construct the
-OpenAI-compatible client backed by the Foundry deployment. Auth is Entra ID
-via `AzureCliCredential` — no API keys.
+OpenAI-compatible client backed by the Foundry deployment. Auth uses
+`AZURE_OPENAI_API_KEY` when present; otherwise it falls back to Entra ID via
+Azure credentials.
 """
 from __future__ import annotations
 
@@ -19,6 +20,12 @@ FOUNDRY_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get(
 )
 DEFAULT_DEPLOYMENT = os.environ.get("AZURE_AI_FOUNDRY_DEPLOYMENT", "gpt-4o-mini")
 CREDENTIAL_MODE = os.environ.get("WORKIQ_AZURE_CREDENTIAL_MODE", "cli").strip().lower()
+OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("AZURE_AI_FOUNDRY_API_KEY")
+TOKEN_SCOPE = (
+    "https://cognitiveservices.azure.com/.default"
+    if FOUNDRY_ENDPOINT and ".openai.azure.com" in FOUNDRY_ENDPOINT
+    else "https://ai.azure.com/.default"
+)
 
 
 def _build_credential():
@@ -36,18 +43,22 @@ def _build_credential():
 def build_chat_client(deployment: str | None = None) -> OpenAIChatClient:
     """Return an `OpenAIChatClient` targeting the Foundry deployment.
 
-    Uses AzureCliCredential -> bearer token against `https://ai.azure.com/.default`.
-    Tokens auto-refresh because the openai SDK accepts a callable for `api_key`.
+    Uses `AZURE_OPENAI_API_KEY` when present. Otherwise uses Azure credentials ->
+    bearer token against the Azure AI/OpenAI scope; tokens auto-refresh
+    because the openai SDK accepts a callable for `api_key`.
     """
     if not FOUNDRY_ENDPOINT:
         raise RuntimeError(
             "AZURE_OPENAI_ENDPOINT (or AZURE_AI_FOUNDRY_ENDPOINT) is not set. "
             "Point it at your Foundry /openai/v1 endpoint."
         )
-    credential = _build_credential()
-    token_provider = get_bearer_token_provider(credential, "https://ai.azure.com/.default")
+    if OPENAI_API_KEY:
+        api_key = OPENAI_API_KEY
+    else:
+        credential = _build_credential()
+        api_key = get_bearer_token_provider(credential, TOKEN_SCOPE)
     openai_client = AsyncOpenAI(
         base_url=FOUNDRY_ENDPOINT,
-        api_key=token_provider,  # type: ignore[arg-type]
+        api_key=api_key,  # type: ignore[arg-type]
     )
     return OpenAIChatClient(model=deployment or DEFAULT_DEPLOYMENT, async_client=openai_client)

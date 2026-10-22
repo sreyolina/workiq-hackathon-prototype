@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -133,6 +134,12 @@ async def _setup():
             draft, citations = question.strip(), []
 
         prompt = json.dumps({"draft": draft, "citations": citations}, indent=2)
+        if re.search(r"\]\(/download/report/[^)\s]+\.xlsx\)", draft):
+            return {
+                "response": _deterministic_fallback(draft, citations),
+                "citations": citations,
+                "metadata": {"stage": "citation", "usage": {}, "subagent": "citation"},
+            }
         usage: dict = {}
         with telemetry.tracer.start_as_current_span(
             "workiq.subagent.citation",

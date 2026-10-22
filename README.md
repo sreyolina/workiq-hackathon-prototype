@@ -170,6 +170,53 @@ details are in [`simulator/README.md`](simulator/README.md) — start there.
 
 ---
 
+## Governance demo — HR-sensitive data not visible to `quality_pm`
+
+The simulator ships a built-in multi-signal RBAC demo using **scenario `c1-northbridge`**.
+
+### Ask as `quality_pm` (Maria Delgado — Quality Program Manager)
+
+```powershell
+$env:WORKIQ_SIM_PERSONA = "quality_pm"
+$env:WORKIQ_SIM_SCENARIO = "scenarios/c1-northbridge"
+.\.venv\Scripts\python.exe simulator\demo.py --ask "Prep me for the Joint Commission readiness review: what did the quality committee decide on med-reconciliation, who owns the corrective action, did credentialing close the related onboarding gap, and what's outstanding?"
+```
+
+**What you see:** A full multi-signal answer drawing from committee meetings (MTG-001, MTG-003), email (EML-006), the readiness checklist (FILE-004), and open CAPAs — **plus** a governance note:
+
+```
+[Governance] 1 source was withheld from this answer because the active persona
+('quality_pm') does not have access to restricted material: FILE-003.
+Switch to a leadership persona to see it.
+```
+
+`FILE-003` is `Credentialing — Provider Onboarding Personnel Matter (CONFIDENTIAL).docx`. Maria's ACL does not include the HR credentialing file — it is silently excluded from citations and answer prose.
+
+### Same question as `ops_director` (James Whitaker — Director of Clinic Operations)
+
+```powershell
+$env:WORKIQ_SIM_PERSONA = "ops_director"
+.\.venv\Scripts\python.exe simulator\demo.py --ask "Prep me for the Joint Commission readiness review: what did the quality committee decide on med-reconciliation, who owns the corrective action, did credentialing close the related onboarding gap, and what's outstanding?"
+```
+
+**What you see:** Identical answer structure — FILE-003 now appears in citations, the HR personnel matter detail is included in the narrative, and the governance note is absent.
+
+### What the demo proves
+
+| Signal | `quality_pm` | `ops_director` |
+|--------|-------------|----------------|
+| Committee decisions (MTG-001, MTG-003) | ✅ Visible | ✅ Visible |
+| Open CAPAs (CAPA-001, CAPA-002) | ✅ Visible | ✅ Visible |
+| Readiness checklist (FILE-004) | ✅ Visible | ✅ Visible |
+| **HR personnel file (FILE-003)** | **❌ Withheld + audit note** | **✅ Visible** |
+| CAPA-005 closed-session detail | ❌ Withheld | ✅ Visible |
+
+The system **never denies the question** — it answers as much as the identity allows, explicitly audits what was trimmed, and returns the same answer shape for both personas. Only the *data* changes.
+
+> Full live demo script with persona-switch steps: **Case 2b** in [`docs/NORTHBRIDGE_DEMO_RUNBOOK.md`](docs/NORTHBRIDGE_DEMO_RUNBOOK.md).
+
+---
+
 ## Quick start — Path B (real Work IQ)
 
 Request the **Participant Setup Guide** from the hackathon organizers (it is not included

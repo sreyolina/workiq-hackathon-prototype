@@ -28,7 +28,9 @@ Environment
   AZURE_SEARCH_ENDPOINT       https://<name>.search.windows.net
   AZURE_SEARCH_INDEX          Index name (default: workiq-docs)
   AZURE_SEARCH_ADMIN_KEY      Admin key (for index creation); omit to use az login
+    WORKIQ_SEARCH_DISABLED      Set to true/1/yes to force local fallback search
   AZURE_OPENAI_ENDPOINT       For embedding computation
+    AZURE_OPENAI_API_KEY        Optional key for embedding calls; omit to use az login
   AZURE_EMBEDDING_DEPLOYMENT  Embedding model deployment (default: text-embedding-ada-002)
 """
 
@@ -62,6 +64,8 @@ ATTACHMENT_EXTENSIONS = {
 def is_available() -> bool:
     """True if AI Search is configured."""
     global SEARCH_ENDPOINT, SEARCH_INDEX, SEARCH_ADMIN_KEY
+    if os.environ.get("WORKIQ_SEARCH_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
+        return False
     if not SEARCH_ENDPOINT:
         SEARCH_ENDPOINT = os.environ.get("AZURE_SEARCH_ENDPOINT", "")
         SEARCH_INDEX = os.environ.get("AZURE_SEARCH_INDEX", "workiq-docs")
@@ -243,6 +247,7 @@ def get_embeddings_batch(texts: list[str]) -> np.ndarray | None:
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
     if not endpoint:
         return None
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("AZURE_AI_FOUNDRY_API_KEY")
 
     import httpx
 
@@ -252,12 +257,16 @@ def get_embeddings_batch(texts: list[str]) -> np.ndarray | None:
     url = f"{base}/openai/deployments/{deploy}/embeddings?api-version={api_version}"
 
     try:
-        credential = _get_credential()
-        token = credential.get_token("https://cognitiveservices.azure.com/.default").token
+        if api_key:
+            headers = {"api-key": api_key, "Content-Type": "application/json"}
+        else:
+            credential = _get_credential()
+            token = credential.get_token("https://cognitiveservices.azure.com/.default").token
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         resp = httpx.post(
             url,
             json={"input": texts},
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            headers=headers,
             timeout=60.0,
         )
         if resp.status_code != 200:
